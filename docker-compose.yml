@@ -24,8 +24,11 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3000
-      # Connect to the local docker network database using container name
-      PG_CONNECTION_STRING: postgres://antigravity_user:antigravity_pass_secure@postgres:5432/antigravity
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: antigravity
+      DB_USER: antigravity_user
+      DB_PASSWORD: antigravity_pass_secure
       
       # [UPDATED] Twilio API Credentials
       TWILIO_ACCOUNT_SID: AC99972b185b2017987aa6c68b0a81382d
