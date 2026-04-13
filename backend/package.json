@@ -1,0 +1,32 @@
+{
+  "name": "project-antigravity",
+  "version": "1.0.0",
+  "description": "Enterprise Auction Sourcing & Alert Pipeline — MAT Solutions",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "migrate": "psql -U $DB_USER -d $DB_NAME -f src/db/migrations/001_initial_schema.sql",
+    "seed": "psql -U $DB_USER -d $DB_NAME -f src/db/seeds/default_hunts.sql",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": ["copart", "auction", "scraper", "twilio", "whatsapp"],
+  "author": "MAT Solutions",
+  "license": "PROPRIETARY",
+  "type": "commonjs",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.1",
+    "express": "^5.2.1",
+    "helmet": "^8.1.0",
+    "luxon": "^3.7.2",
+    "morgan": "^1.10.1",
+    "node-cron": "^4.2.1",
+    "pg": "^8.20.0",
+    "playwright": "^1.59.1",
+    "playwright-extra": "^4.3.6",
+    "playwright-extra-plugin-stealth": "^0.0.1",
+    "twilio": "^5.13.1",
+    "uuid": "^13.0.0"
+  }
+}

@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project Antigravity — Command Center</title>
+    <meta name="description" content="Enterprise Auction Sourcing & Alert Pipeline — MAT Solutions">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <!-- ===== HEADER ===== -->
+    <header id="main-header" class="app-header">
+        <div class="header-left">
+            <div class="logo-mark">
+                <span class="logo-icon">🚀</span>
+                <div class="logo-text">
+                    <h1>Antigravity</h1>
+                    <span class="logo-subtitle">Command Center</span>
+                </div>
+            </div>
+        </div>
+        <div class="header-center">
+            <div id="system-status-badge" class="status-badge status-unknown">
+                <span class="status-dot"></span>
+                <span class="status-label">Connecting...</span>
+            </div>
+        </div>
+        <div class="header-right">
+            <button id="btn-tour" class="btn btn-ghost btn-sm" title="Quick Tour">Help / Tour</button>
+            <span id="last-refresh" class="meta-text">—</span>
+            <button id="btn-refresh" class="btn btn-ghost" title="Refresh now">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
+            </button>
+        </div>
+    </header>
+
+    <!-- ===== MAIN CONTENT ===== -->
+    <main class="app-main">
+
+        <!-- === STATS ROW === -->
+        <section id="stats-row" class="stats-row">
+            <div class="stat-card glass" id="stat-hunts">
+                <div class="stat-icon">🎯</div>
+                <div class="stat-content">
+                    <span class="stat-value" id="stat-hunts-active">—</span>
+                    <span class="stat-label">Active Hunts</span>
+                </div>
+            </div>
+            <div class="stat-card glass" id="stat-lots">
+                <div class="stat-icon">🚗</div>
+                <div class="stat-content">
+                    <span class="stat-value" id="stat-lots-total">—</span>
+                    <span class="stat-label">Lots Tracked</span>
+                </div>
+            </div>
+            <div class="stat-card glass" id="stat-matches">
+                <div class="stat-icon">✅</div>
+                <div class="stat-content">
+                    <span class="stat-value" id="stat-matches-count">—</span>
+                    <span class="stat-label">Matches</span>
+                </div>
+            </div>
+            <div class="stat-card glass" id="stat-alerts">
+                <div class="stat-icon">📲</div>
+                <div class="stat-content">
+                    <span class="stat-value" id="stat-alerts-sent">—</span>
+                    <span class="stat-label">Alerts Sent</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- === GRID LAYOUT === -->
+        <div class="dashboard-grid">
+
+            <!-- === LEFT COLUMN === -->
+            <div class="grid-col-left">
+
+                <!-- Run History Panel -->
+                <section class="panel glass" id="panel-runs">
+                    <div class="panel-header">
+                        <h2>Pipeline Runs</h2>
+                        <div class="panel-actions">
+                            <button id="btn-trigger-scrape" class="btn btn-primary btn-sm">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                                Trigger Scrape
+                            </button>
+                        </div>
+                    </div>
+                    <div class="panel-body">
+                        <!-- Run status indicators -->
+                        <div class="run-indicators" id="run-indicators">
+                            <div class="run-indicator" id="run-last-success">
+                                <span class="indicator-dot dot-success"></span>
+                                <div class="indicator-content">
+                                    <span class="indicator-label">Last Success</span>
+                                    <span class="indicator-value" id="val-last-success">Never</span>
+                                </div>
+                            </div>
+                            <div class="run-indicator" id="run-last-blocked">
+                                <span class="indicator-dot dot-blocked"></span>
+                                <div class="indicator-content">
+                                    <span class="indicator-label">Last Blocked</span>
+                                    <span class="indicator-value" id="val-last-blocked">Never</span>
+                                </div>
+                            </div>
+                            <div class="run-indicator" id="run-last-failed">
+                                <span class="indicator-dot dot-failed"></span>
+                                <div class="indicator-content">
+                                    <span class="indicator-label">Last Failed</span>
+                                    <span class="indicator-value" id="val-last-failed">Never</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Run log table -->
+                        <div class="table-wrapper">
+                            <table class="data-table" id="table-runs">
+                                <thead>
+                                    <tr>
+                                        <th>Status</th>
+                                        <th>Time</th>
+                                        <th>Found</th>
+                                        <th>New</th>
+                                        <th>Alerts</th>
+                                        <th>Duration</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tbody-runs">
+                                    <tr><td colspan="6" class="empty-state">Loading...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Active Hunts Panel -->
+                <section class="panel glass" id="panel-hunts">
+                    <div class="panel-header">
+                        <h2>Active Hunts</h2>
+                        <button id="btn-add-hunt" class="btn btn-ghost btn-sm">+ Add Hunt</button>
+                    </div>
+                    <div class="panel-body">
+                        <div id="hunts-list" class="hunts-list">
+                            <div class="empty-state">Loading hunts...</div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- === RIGHT COLUMN === -->
+            <div class="grid-col-right">
+
+                <!-- Live Lot Feed -->
+                <section class="panel glass" id="panel-lots">
+                    <div class="panel-header">
+                        <h2>Matched Vehicles</h2>
+                        <div class="panel-actions">
+                            <select id="filter-lot-status" class="select-sm">
+                                <option value="">All</option>
+                                <option value="new">New</option>
+                                <option value="matched">Matched</option>
+                                <option value="alerted">Alerted</option>
+                                <option value="sold">Sold</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="panel-body">
+                        <div id="lots-feed" class="lots-feed">
+                            <div class="empty-state">No vehicles tracked yet</div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Alert Timeline -->
+                <section class="panel glass" id="panel-alerts">
+                    <div class="panel-header">
+                        <h2>Alert Timeline</h2>
+                    </div>
+                    <div class="panel-body">
+                        <div id="alerts-timeline" class="alerts-timeline">
+                            <div class="empty-state">No alerts sent yet</div>
+                        </div>
+                    </div>
+                </section>
+
+            </div>
+        </div>
+    </main>
+
+    <!-- ===== TOAST CONTAINER ===== -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- ===== ADD HUNT MODAL ===== -->
+    <div id="modal-add-hunt" class="modal-overlay" style="display:none;">
+        <div class="modal glass">
+            <div class="modal-header">
+                <h3>Add New Hunt</h3>
+                <button id="btn-close-modal" class="btn btn-ghost btn-sm">✕</button>
+            </div>
+            <form id="form-add-hunt" class="modal-body">
+                <div class="form-group">
+                    <label for="hunt-name">Hunt Name</label>
+                    <input type="text" id="hunt-name" required placeholder="e.g., Tacoma Access Cab">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="hunt-make">Make</label>
+                        <input type="text" id="hunt-make" required placeholder="TOYOTA">
+                    </div>
+                    <div class="form-group">
+                        <label for="hunt-model">Model</label>
+                        <input type="text" id="hunt-model" required placeholder="TACOMA">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="hunt-year-min">Year Min</label>
+                        <input type="number" id="hunt-year-min" placeholder="2012">
+                    </div>
+                    <div class="form-group">
+                        <label for="hunt-year-max">Year Max</label>
+                        <input type="number" id="hunt-year-max" placeholder="2015">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="hunt-body-style">Body Style</label>
+                    <input type="text" id="hunt-body-style" placeholder="ACCESS CAB">
+                </div>
+                <div class="form-group">
+                    <label for="hunt-max-bid">Max Bid ($)</label>
+                    <input type="number" id="hunt-max-bid" step="0.01" placeholder="15000">
+                </div>
+                <div class="form-group">
+                    <label for="hunt-keywords">Keywords (comma-separated)</label>
+                    <input type="text" id="hunt-keywords" placeholder="access, ext cab, extended">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" id="btn-cancel-hunt" class="btn btn-ghost">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Create Hunt</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ===== ONBOARDING MODAL ===== -->
+    <div id="modal-onboarding" class="modal-overlay" style="display:none;">
+        <div class="modal glass" style="max-width: 500px">
+            <div class="modal-header">
+                <h3>Welcome to Antigravity</h3>
+                <button id="btn-close-tour" class="btn btn-ghost btn-sm">✕</button>
+            </div>
+            <div class="modal-body" id="tour-content">
+                <!-- Tour steps injected via JS -->
+            </div>
+            <div class="modal-footer" style="justify-content: space-between;">
+                <button type="button" id="btn-tour-prev" class="btn btn-ghost" style="visibility:hidden">Back</button>
+                <div class="tour-dots" id="tour-dots">
+                    <!-- Dots injected via JS -->
+                </div>
+                <button type="button" id="btn-tour-next" class="btn btn-primary">Next</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>

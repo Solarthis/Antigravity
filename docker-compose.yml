@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: antigravity_db
+    environment:
+      POSTGRES_USER: antigravity_user
+      POSTGRES_PASSWORD: antigravity_pass_secure
+      POSTGRES_DB: antigravity
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Mount the schema and seeds to auto-initialize the database on first boot
+      # Docker's Postgres image runs these in alphabetical order (/docker-entrypoint-initdb.d/)
+      - ./backend/src/db/migrations/001_initial_schema.sql:/docker-entrypoint-initdb.d/1-schema.sql
+      - ./backend/src/db/seeds/default_hunts.sql:/docker-entrypoint-initdb.d/2-seeds.sql
+    restart: unless-stopped
+
+  antigravity:
+    build: .
+    container_name: antigravity_app
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      # Connect to the local docker network database using container name
+      PG_CONNECTION_STRING: postgres://antigravity_user:antigravity_pass_secure@postgres:5432/antigravity
+      
+      # [UPDATED] Twilio API Credentials
+      TWILIO_ACCOUNT_SID: AC99972b185b2017987aa6c68b0a81382d
+      TWILIO_AUTH_TOKEN: 4ada2a170b5c505a9ab9c06b5117b07a
+      TWILIO_SMS_FROM: "+15754004686"
+      TWILIO_WHATSAPP_FROM: "whatsapp:+15754004686"
+      ALERT_RECIPIENTS_WHATSAPP: "whatsapp:+15754004686"
+      ALERT_RECIPIENTS_SMS: "+15754004686"
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+volumes:
+  pgdata:
