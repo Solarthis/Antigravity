@@ -23,11 +23,10 @@ pool.on('error', (err) => {
 });
 
 /**
- * Test database connectivity with retry.
- * @param {number} retries - Number of retry attempts
- * @param {number} delayMs - Base delay between retries (doubles each attempt)
+ * @param {number} retries - Number of retry attempts (increased for VPS stability)
+ * @param {number} delayMs - Base delay between retries
  */
-async function testConnection(retries = 3, delayMs = 2000) {
+async function testConnection(retries = 10, delayMs = 3000) {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       const client = await pool.connect();
