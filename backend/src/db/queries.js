@@ -17,7 +17,7 @@ const { LOT_STATUS, ALERT_STATUS, SCRAPE_STATUS } = require('../config/constants
  */
 async function getActiveHunts() {
   const result = await query(
-    `SELECT * FROM hunts WHERE is_active = true ORDER BY id`
+    `SELECT * FROM hunts WHERE is_active = 1 ORDER BY id`
   );
   return result.rows;
 }
@@ -37,7 +37,7 @@ async function getAllHunts() {
  * @returns {Promise<Object|null>}
  */
 async function getHuntById(id) {
-  const result = await query(`SELECT * FROM hunts WHERE id = $1`, [id]);
+  const result = await query(`SELECT * FROM hunts WHERE id = ?`, [id]);
   return result.rows[0] || null;
 }
 
@@ -49,7 +49,7 @@ async function getHuntById(id) {
 async function createHunt(hunt) {
   const result = await query(
     `INSERT INTO hunts (name, make, model, year_min, year_max, body_style, keywords, max_bid, is_active)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
      RETURNING *`,
     [
       hunt.name,
@@ -58,9 +58,9 @@ async function createHunt(hunt) {
       hunt.year_min || null,
       hunt.year_max || null,
       hunt.body_style ? hunt.body_style.toUpperCase().trim() : null,
-      hunt.keywords || [],
+      JSON.stringify(hunt.keywords || []),
       hunt.max_bid || null,
-      hunt.is_active !== false,
+      hunt.is_active !== false ? 1 : 0,
     ]
   );
   return result.rows[0];
@@ -75,7 +75,6 @@ async function createHunt(hunt) {
 async function updateHunt(id, updates) {
   const fields = [];
   const values = [];
-  let paramIndex = 1;
 
   const allowedFields = [
     'name', 'make', 'model', 'year_min', 'year_max',
@@ -89,19 +88,24 @@ async function updateHunt(id, updates) {
       if (['make', 'model', 'body_style'].includes(field) && typeof value === 'string') {
         value = value.toUpperCase().trim();
       }
-      fields.push(`${field} = $${paramIndex}`);
+      if (field === 'keywords') {
+        value = JSON.stringify(value || []);
+      }
+      if (field === 'is_active') {
+        value = value ? 1 : 0;
+      }
+      fields.push(`${field} = ?`);
       values.push(value);
-      paramIndex++;
     }
   }
 
   if (fields.length === 0) return getHuntById(id);
 
-  fields.push(`updated_at = NOW() AT TIME ZONE 'UTC'`);
+  fields.push(`updated_at = datetime('now')`);
   values.push(id);
 
   const result = await query(
-    `UPDATE hunts SET ${fields.join(', ')} WHERE id = $${paramIndex} RETURNING *`,
+    `UPDATE hunts SET ${fields.join(', ')} WHERE id = ? RETURNING *`,
     values
   );
   return result.rows[0] || null;
@@ -127,7 +131,7 @@ async function upsertLot(lot) {
        odometer, drive_type, fuel_type, engine, color,
        image_url, lot_url, raw_data, match_confidence, parser_version, status
      )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (lot_number) DO UPDATE SET
        hunt_id          = COALESCE(EXCLUDED.hunt_id, lots.hunt_id),
        title            = COALESCE(EXCLUDED.title, lots.title),
@@ -135,16 +139,15 @@ async function upsertLot(lot) {
        buy_now_price    = EXCLUDED.buy_now_price,
        sale_date        = COALESCE(EXCLUDED.sale_date, lots.sale_date),
        raw_data         = EXCLUDED.raw_data,
-       match_confidence = GREATEST(EXCLUDED.match_confidence, lots.match_confidence),
+       match_confidence = MAX(EXCLUDED.match_confidence, lots.match_confidence),
        parser_version   = EXCLUDED.parser_version,
-       last_seen        = NOW() AT TIME ZONE 'UTC',
-       -- Only upgrade status, never downgrade
+       last_seen        = datetime('now'),
        status = CASE
          WHEN EXCLUDED.match_confidence > lots.match_confidence THEN EXCLUDED.status
          ELSE lots.status
        END
      RETURNING *,
-       (xmax = 0) AS is_new`,
+       (created_at = last_seen) AS is_new`,
     [
       lot.lot_number,
       lot.hunt_id || null,
@@ -165,7 +168,7 @@ async function upsertLot(lot) {
       lot.color || null,
       lot.image_url || null,
       lot.lot_url || null,
-      lot.raw_data || {},
+      JSON.stringify(lot.raw_data || {}),
       lot.match_confidence || 0,
       lot.parser_version || '1.0.0',
       lot.status || LOT_STATUS.NEW,
@@ -173,7 +176,8 @@ async function upsertLot(lot) {
   );
 
   const row = result.rows[0];
-  return { row, isNew: row.is_new };
+  // Simple heuristic for isNew since SQLite xmax/returning is different
+  return { row, isNew: row.is_new === 1 };
 }
 
 /**
@@ -184,14 +188,13 @@ async function upsertLot(lot) {
 async function getLots({ status, hunt_id, limit = 50, offset = 0 } = {}) {
   const conditions = [];
   const params = [];
-  let paramIndex = 1;
 
   if (status) {
-    conditions.push(`status = $${paramIndex++}`);
+    conditions.push(`status = ?`);
     params.push(status);
   }
   if (hunt_id) {
-    conditions.push(`hunt_id = $${paramIndex++}`);
+    conditions.push(`hunt_id = ?`);
     params.push(hunt_id);
   }
 
@@ -199,7 +202,7 @@ async function getLots({ status, hunt_id, limit = 50, offset = 0 } = {}) {
   params.push(limit, offset);
 
   const result = await query(
-    `SELECT * FROM lots ${where} ORDER BY first_seen DESC LIMIT $${paramIndex++} OFFSET $${paramIndex}`,
+    `SELECT * FROM lots ${where} ORDER BY first_seen DESC LIMIT ? OFFSET ?`,
     params
   );
   return result.rows;
@@ -212,7 +215,7 @@ async function getLots({ status, hunt_id, limit = 50, offset = 0 } = {}) {
  */
 async function getLotByNumber(lotNumber) {
   const result = await query(
-    `SELECT * FROM lots WHERE lot_number = $1`,
+    `SELECT * FROM lots WHERE lot_number = ?`,
     [lotNumber]
   );
   return result.rows[0] || null;
@@ -230,7 +233,7 @@ async function updateLotStatus(id, status) {
     throw new Error(`[DB] Invalid lot status: ${status}. Valid: ${validStatuses.join(', ')}`);
   }
   const result = await query(
-    `UPDATE lots SET status = $1, last_seen = NOW() AT TIME ZONE 'UTC' WHERE id = $2 RETURNING *`,
+    `UPDATE lots SET status = ?, last_seen = datetime('now') WHERE id = ? RETURNING *`,
     [status, id]
   );
   return result.rows[0] || null;
@@ -245,7 +248,7 @@ async function updateLotStatus(id, status) {
 async function hasBuyNowChanged(lotNumber, newBuyNowPrice) {
   if (!newBuyNowPrice) return false;
   const result = await query(
-    `SELECT buy_now_price FROM lots WHERE lot_number = $1`,
+    `SELECT buy_now_price FROM lots WHERE lot_number = ?`,
     [lotNumber]
   );
   if (result.rows.length === 0) return true; // new lot
@@ -265,8 +268,8 @@ async function hasBuyNowChanged(lotNumber, newBuyNowPrice) {
 async function alertExists({ lot_id, hunt_id, recipient, channel, trigger_fingerprint }) {
   const result = await query(
     `SELECT id FROM alerts
-     WHERE lot_id = $1 AND hunt_id = $2 AND recipient = $3
-       AND channel = $4 AND trigger_fingerprint = $5`,
+     WHERE lot_id = ? AND hunt_id = ? AND recipient = ?
+       AND channel = ? AND trigger_fingerprint = ?`,
     [lot_id, hunt_id, recipient, channel, trigger_fingerprint]
   );
   return result.rows.length > 0;
@@ -284,7 +287,7 @@ async function createAlert(alert) {
       `INSERT INTO alerts (lot_id, hunt_id, channel, recipient, message_sid,
                            trigger_fingerprint, priority, status, retry_count,
                            error_code, error_message)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (lot_id, hunt_id, recipient, channel, trigger_fingerprint)
        DO NOTHING
        RETURNING *`,
@@ -323,13 +326,13 @@ async function updateAlertStatus(id, updates) {
   }
   const result = await query(
     `UPDATE alerts
-     SET status = COALESCE($1, status),
-         message_sid = COALESCE($2, message_sid),
-         retry_count = COALESCE($3, retry_count),
-         error_code = $4,
-         error_message = $5,
-         sent_at = CASE WHEN $1 = 'sent' THEN NOW() AT TIME ZONE 'UTC' ELSE sent_at END
-     WHERE id = $6
+     SET status = COALESCE(?, status),
+         message_sid = COALESCE(?, message_sid),
+         retry_count = COALESCE(?, retry_count),
+         error_code = ?,
+         error_message = ?,
+         sent_at = CASE WHEN ? = 'sent' THEN datetime('now') ELSE sent_at END
+     WHERE id = ?
      RETURNING *`,
     [
       updates.status || null,
@@ -337,6 +340,7 @@ async function updateAlertStatus(id, updates) {
       updates.retry_count !== undefined ? updates.retry_count : null,
       updates.error_code || null,
       updates.error_message || null,
+      updates.status || null,
       id,
     ]
   );
@@ -351,14 +355,13 @@ async function updateAlertStatus(id, updates) {
 async function getAlerts({ status, lot_id, limit = 50, offset = 0 } = {}) {
   const conditions = [];
   const params = [];
-  let paramIndex = 1;
 
   if (status) {
-    conditions.push(`a.status = $${paramIndex++}`);
+    conditions.push(`a.status = ?`);
     params.push(status);
   }
   if (lot_id) {
-    conditions.push(`a.lot_id = $${paramIndex++}`);
+    conditions.push(`a.lot_id = ?`);
     params.push(lot_id);
   }
 
@@ -372,7 +375,7 @@ async function getAlerts({ status, lot_id, limit = 50, offset = 0 } = {}) {
      LEFT JOIN hunts h ON a.hunt_id = h.id
      ${where}
      ORDER BY a.sent_at DESC
-     LIMIT $${paramIndex++} OFFSET $${paramIndex}`,
+     LIMIT ? OFFSET ?`,
     params
   );
   return result.rows;
@@ -390,7 +393,7 @@ async function getAlerts({ status, lot_id, limit = 50, offset = 0 } = {}) {
 async function createScrapeLog({ run_id, hunt_id, parser_version }) {
   const result = await query(
     `INSERT INTO scrape_logs (run_id, hunt_id, parser_version, status)
-     VALUES ($1, $2, $3, $4)
+     VALUES (?, ?, ?, ?)
      RETURNING *`,
     [run_id, hunt_id || null, parser_version, SCRAPE_STATUS.RUNNING]
   );
@@ -411,19 +414,19 @@ async function finalizeScrapeLog(run_id, results) {
 
   const result = await query(
     `UPDATE scrape_logs
-     SET finished_at = NOW() AT TIME ZONE 'UTC',
-         status = $1,
-         lots_found = $2,
-         new_lots = $3,
-         matches_found = $4,
-         alerts_sent = $5,
-         alerts_suppressed = $6,
-         error_code = $7,
-         error_message = $8,
-         block_reason = $9,
-         duration_ms = $10,
-         metadata = $11
-     WHERE run_id = $12
+     SET finished_at = datetime('now'),
+         status = ?,
+         lots_found = ?,
+         new_lots = ?,
+         matches_found = ?,
+         alerts_sent = ?,
+         alerts_suppressed = ?,
+         error_code = ?,
+         error_message = ?,
+         block_reason = ?,
+         duration_ms = ?,
+         metadata = ?
+     WHERE run_id = ?
      RETURNING *`,
     [
       results.status,
@@ -436,7 +439,7 @@ async function finalizeScrapeLog(run_id, results) {
       results.error_message || null,
       results.block_reason || null,
       results.duration_ms || null,
-      results.metadata || {},
+      JSON.stringify(results.metadata || {}),
       run_id,
     ]
   );
@@ -451,10 +454,9 @@ async function finalizeScrapeLog(run_id, results) {
 async function getScrapeLogs({ status, limit = 50, offset = 0 } = {}) {
   const conditions = [];
   const params = [];
-  let paramIndex = 1;
 
   if (status) {
-    conditions.push(`status = $${paramIndex++}`);
+    conditions.push(`status = ?`);
     params.push(status);
   }
 
@@ -462,7 +464,7 @@ async function getScrapeLogs({ status, limit = 50, offset = 0 } = {}) {
   params.push(limit, offset);
 
   const result = await query(
-    `SELECT * FROM scrape_logs ${where} ORDER BY started_at DESC LIMIT $${paramIndex++} OFFSET $${paramIndex}`,
+    `SELECT * FROM scrape_logs ${where} ORDER BY started_at DESC LIMIT ? OFFSET ?`,
     params
   );
   return result.rows;
@@ -473,11 +475,14 @@ async function getScrapeLogs({ status, limit = 50, offset = 0 } = {}) {
  * @returns {Promise<Object>} { lastSuccess, lastFailed, lastBlocked }
  */
 async function getLatestRunsByStatus() {
+  // SQLite version of DISTINCT ON using a subquery grouping
   const result = await query(
-    `SELECT DISTINCT ON (status) *
-     FROM scrape_logs
-     WHERE status IN ('success', 'failed', 'blocked', 'partial')
-     ORDER BY status, started_at DESC`
+    `SELECT * FROM scrape_logs 
+     WHERE id IN (
+       SELECT MAX(id) FROM scrape_logs 
+       WHERE status IN ('success', 'failed', 'blocked', 'partial')
+       GROUP BY status
+     )`
   );
 
   const map = {};
@@ -509,20 +514,20 @@ async function getLatestRunsByStatus() {
 async function acquireJobLock(lockName, lockedBy, runId, ttlMs) {
   // First, clean up any expired locks
   await query(
-    `DELETE FROM job_locks WHERE lock_name = $1 AND expires_at < NOW() AT TIME ZONE 'UTC'`,
+    `DELETE FROM job_locks WHERE lock_name = ? AND expires_at < datetime('now')`,
     [lockName]
   );
 
   try {
     await query(
       `INSERT INTO job_locks (lock_name, locked_by, locked_at, expires_at, run_id)
-       VALUES ($1, $2, NOW() AT TIME ZONE 'UTC', (NOW() AT TIME ZONE 'UTC') + ($3 || ' milliseconds')::INTERVAL, $4)`,
+       VALUES (?, ?, datetime('now'), datetime('now', '+' || ? || ' milliseconds'), ?)`,
       [lockName, lockedBy, ttlMs.toString(), runId]
     );
     return true;
   } catch (err) {
     // Unique constraint violation = lock already held
-    if (err.code === '23505') {
+    if (err.message.includes('UNIQUE constraint failed')) {
       console.warn(`[LOCK] Job lock '${lockName}' is already held.`);
       return false;
     }
@@ -538,7 +543,7 @@ async function acquireJobLock(lockName, lockedBy, runId, ttlMs) {
  */
 async function releaseJobLock(lockName, runId) {
   const result = await query(
-    `DELETE FROM job_locks WHERE lock_name = $1 AND run_id = $2`,
+    `DELETE FROM job_locks WHERE lock_name = ? AND run_id = ?`,
     [lockName, runId]
   );
   return result.rowCount > 0;
@@ -551,7 +556,7 @@ async function releaseJobLock(lockName, runId) {
  */
 async function getJobLock(lockName) {
   const result = await query(
-    `SELECT * FROM job_locks WHERE lock_name = $1 AND expires_at > NOW() AT TIME ZONE 'UTC'`,
+    `SELECT * FROM job_locks WHERE lock_name = ? AND expires_at > datetime('now')`,
     [lockName]
   );
   return result.rows[0] || null;
@@ -567,19 +572,19 @@ async function getJobLock(lockName) {
  */
 async function getSystemStatus() {
   const [huntsResult, lotsResult, alertsResult, runsResult, lockResult] = await Promise.all([
-    query(`SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE is_active) as active FROM hunts`),
+    query(`SELECT COUNT(*) as total, SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) as active FROM hunts`),
     query(`SELECT
              COUNT(*) as total,
-             COUNT(*) FILTER (WHERE status = 'new') as new_count,
-             COUNT(*) FILTER (WHERE status = 'matched') as matched_count,
-             COUNT(*) FILTER (WHERE status = 'alerted') as alerted_count,
-             COUNT(*) FILTER (WHERE status = 'sold') as sold_count
+             SUM(CASE WHEN status = 'new' THEN 1 ELSE 0 END) as new_count,
+             SUM(CASE WHEN status = 'matched' THEN 1 ELSE 0 END) as matched_count,
+             SUM(CASE WHEN status = 'alerted' THEN 1 ELSE 0 END) as alerted_count,
+             SUM(CASE WHEN status = 'sold' THEN 1 ELSE 0 END) as sold_count
            FROM lots`),
     query(`SELECT
              COUNT(*) as total,
-             COUNT(*) FILTER (WHERE status = 'sent' OR status = 'delivered') as sent_count,
-             COUNT(*) FILTER (WHERE status = 'failed') as failed_count,
-             COUNT(*) FILTER (WHERE status = 'suppressed') as suppressed_count
+             SUM(CASE WHEN status = 'sent' OR status = 'delivered' THEN 1 ELSE 0 END) as sent_count,
+             SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed_count,
+             SUM(CASE WHEN status = 'suppressed' THEN 1 ELSE 0 END) as suppressed_count
            FROM alerts`),
     getLatestRunsByStatus(),
     getJobLock('scrape_job'),

@@ -6,6 +6,13 @@ const express = require('express');
 const router = express.Router();
 const db = require('../../db/queries');
 
+// GET /api/v1/status/health — Lightweight readiness probe.
+// Used by the Docker healthcheck and launcher wait logic. Must not touch the
+// DB or any subsystem that can legitimately be slow on cold boot.
+router.get('/health', (req, res) => {
+  res.status(200).json({ ok: true });
+});
+
 // GET /api/v1/status — System health and aggregate metrics
 router.get('/', async (req, res, next) => {
   try {

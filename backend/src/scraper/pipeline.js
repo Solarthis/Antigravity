@@ -141,6 +141,18 @@ async function runScrapePipeline(runId) {
         lot.match_confidence = matchResult.confidence;
         lot.status = LOT_STATUS.MATCHED;
 
+        // Step 2d: Check Buy Now state BEFORE upsert so we can compare old vs new.
+        // BUG FIX: hasBuyNowChanged must be called before upsertLot; calling it after
+        // always returns false because the upsert already wrote the new buy_now_price.
+        let buyNowTriggered = false;
+        if (
+          lot.buy_now_price &&
+          hunt.max_bid &&
+          parseFloat(lot.buy_now_price) <= parseFloat(hunt.max_bid)
+        ) {
+          buyNowTriggered = await db.hasBuyNowChanged(lot.lot_number, lot.buy_now_price);
+        }
+
         // Step 2d: Idempotent upsert
         const { row: storedLot, isNew } = await db.upsertLot(lot);
 
@@ -156,7 +168,7 @@ async function runScrapePipeline(runId) {
 
         // Step 2e: Determine alert triggers
 
-        // Trigger 1: New listing alert
+        // Trigger 1: New listing alert (covers brand-new lots regardless of buy_now)
         if (isNew && matchResult.confidence >= env.matchConfidenceThreshold) {
           pendingAlerts.push({
             lot: storedLot,
@@ -166,28 +178,19 @@ async function runScrapePipeline(runId) {
           });
         }
 
-        // Trigger 2: Buy Now appeared or changed (priority escalation)
-        if (
-          storedLot.buy_now_price &&
-          hunt.max_bid &&
-          parseFloat(storedLot.buy_now_price) <= parseFloat(hunt.max_bid)
-        ) {
-          const buyNowChanged = await db.hasBuyNowChanged(
-            storedLot.lot_number,
-            storedLot.buy_now_price
+        // Trigger 2: Buy Now appeared or changed on an EXISTING lot (priority escalation).
+        // We skip new lots here because they are already covered by the new_listing alert above.
+        if (!isNew && buyNowTriggered) {
+          console.log(
+            `[PIPELINE] 🔥 BUY NOW under budget: #${storedLot.lot_number} ` +
+            `$${storedLot.buy_now_price} <= $${hunt.max_bid}`
           );
-          if (buyNowChanged) {
-            console.log(
-              `[PIPELINE] 🔥 BUY NOW under budget: #${storedLot.lot_number} ` +
-              `$${storedLot.buy_now_price} <= $${hunt.max_bid}`
-            );
-            pendingAlerts.push({
-              lot: storedLot,
-              hunt,
-              type: 'buy_now',
-              huntResult
-            });
-          }
+          pendingAlerts.push({
+            lot: storedLot,
+            hunt,
+            type: 'buy_now',
+            huntResult
+          });
         }
 
       } catch (err) {

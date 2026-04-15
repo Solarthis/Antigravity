@@ -1,104 +1,113 @@
 // =============================================================================
-// PROJECT ANTIGRAVITY — Database Connection Pool
+// PROJECT ANTIGRAVITY — SQLite Database
 // =============================================================================
-// PostgreSQL connection pool with retry logic and graceful shutdown.
+// SQLite connection with automated initialization.
 
-const { Pool } = require('pg');
+const Database = require('better-sqlite3');
+const fs = require('fs');
 const env = require('./env');
+const { initializeSchema } = require('../db/init');
 
-const pool = new Pool({
-  host: env.db.host,
-  port: env.db.port,
-  database: env.db.database,
-  user: env.db.user,
-  password: env.db.password,
-  max: env.db.max,
-  idleTimeoutMillis: env.db.idleTimeoutMillis,
-  connectionTimeoutMillis: env.db.connectionTimeoutMillis,
-});
+// Single source of truth for persistence path is env.js.
+const dbPath = env.dbPath;
 
-// Log pool errors (do not crash)
-pool.on('error', (err) => {
-  console.error('[DB] Unexpected pool error:', err.message);
-});
+if (!fs.existsSync(env.dataDir)) {
+  fs.mkdirSync(env.dataDir, { recursive: true });
+}
+
+let db = null;
 
 /**
- * @param {number} retries - Number of retry attempts (increased for VPS stability)
- * @param {number} delayMs - Base delay between retries
+ * Connects to SQLite and initializes schema.
  */
-async function testConnection(retries = 10, delayMs = 3000) {
-  for (let attempt = 1; attempt <= retries; attempt++) {
-    try {
-      const client = await pool.connect();
-      const result = await client.query('SELECT NOW() AS server_time');
-      client.release();
-      console.log(`[DB] Connected to PostgreSQL at ${env.db.host}:${env.db.port}/${env.db.database}`);
-      console.log(`[DB] Server time (UTC): ${result.rows[0].server_time}`);
-      return true;
-    } catch (err) {
-      console.error(`[DB] Connection attempt ${attempt}/${retries} failed: ${err.message}`);
-      if (attempt < retries) {
-        const wait = delayMs * Math.pow(2, attempt - 1);
-        console.log(`[DB] Retrying in ${wait}ms...`);
-        await new Promise((r) => setTimeout(r, wait));
-      }
-    }
+async function testConnection() {
+  try {
+    console.log(`[DB] Opening SQLite database at: ${dbPath}`);
+    db = new Database(dbPath, {
+      verbose: env.nodeEnv === 'development' ? console.log : null,
+    });
+
+    // Enable WAL mode for better concurrency (important for flash drives)
+    db.pragma('journal_mode = WAL');
+    db.pragma('synchronous = NORMAL');
+    db.pragma('foreign_keys = ON');
+
+    // Run schema initialization
+    initializeSchema(db);
+
+    console.log('[DB] SQLite connection and initialization successful.');
+    return true;
+  } catch (err) {
+    console.error(`[DB] Initialization failed: ${err.message}`);
+    throw err;
   }
-  throw new Error('[FATAL] Could not connect to PostgreSQL after all retries.');
 }
 
 /**
- * Run a query with automatic client acquisition and release.
+ * Run a query (read or write).
  * @param {string} text - SQL query text
  * @param {Array} params - Query parameters
- * @returns {import('pg').QueryResult}
+ * @returns {Object} { rows, rowCount, lastInsertId? }
  */
-async function query(text, params) {
+async function query(text, params = []) {
   const start = Date.now();
   try {
-    const result = await pool.query(text, params);
-    const duration = Date.now() - start;
-    if (duration > 1000) {
-      console.warn(`[DB] Slow query (${duration}ms): ${text.substring(0, 80)}...`);
+    // Detect row-returning statements. SQLite's better-sqlite3 requires
+    // `stmt.all()` for anything that yields rows — that includes plain
+    // SELECTs, CTEs (`WITH ...`), and any INSERT/UPDATE/DELETE carrying a
+    // RETURNING clause. Using `stmt.run()` on a RETURNING statement silently
+    // drops the returned rows, which is what previously broke hunt/lot writes.
+    const norm = text.trim().toUpperCase();
+    const returnsRows =
+      norm.startsWith('SELECT') ||
+      norm.startsWith('WITH') ||
+      /\bRETURNING\b/.test(norm);
+
+    const stmt = db.prepare(text);
+    if (returnsRows) {
+      const rows = stmt.all(...params);
+      return { rows, rowCount: rows.length };
     }
-    return result;
+    const result = stmt.run(...params);
+    return {
+      rows: [],
+      rowCount: result.changes,
+      lastInsertId: result.lastInsertRowid,
+    };
   } catch (err) {
     console.error(`[DB] Query error: ${err.message}`);
     console.error(`[DB] Query: ${text.substring(0, 120)}`);
     throw err;
+  } finally {
+    const duration = Date.now() - start;
+    if (duration > 1000) {
+      console.warn(`[DB] Slow query (${duration}ms): ${text.substring(0, 80)}...`);
+    }
   }
 }
 
 /**
  * Run multiple queries inside a transaction.
- * @param {Function} callback - async function receiving a client
+ * @param {Function} callback - function receiving the db instance
  */
 async function transaction(callback) {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    const result = await callback(client);
-    await client.query('COMMIT');
-    return result;
-  } catch (err) {
-    await client.query('ROLLBACK');
-    throw err;
-  } finally {
-    client.release();
-  }
+  const execute = db.transaction(callback);
+  return execute();
 }
 
 /**
- * Gracefully shut down the connection pool.
+ * Gracefully shut down the database.
  */
 async function shutdown() {
-  console.log('[DB] Shutting down connection pool...');
-  await pool.end();
-  console.log('[DB] Pool shut down complete.');
+  if (db && db.open) {
+    console.log('[DB] Closing SQLite connection...');
+    db.close();
+    console.log('[DB] SQLite closed.');
+  }
 }
 
 module.exports = {
-  pool,
+  get db() { return db; },
   query,
   transaction,
   testConnection,

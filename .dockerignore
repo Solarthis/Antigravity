@@ -1,0 +1,37 @@
+# Version control
+.git
+.gitignore
+
+# Host env files — image must only use runtime env from compose/.env
+.env
+.env.*
+!.env.example
+
+# Host dependency trees (image runs `npm ci` inside)
+**/node_modules
+package-lock.json
+
+# Runtime data — mounted as a volume, never baked into the image
+data/
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+
+# Logs and OS clutter
+*.log
+.DS_Store
+Thumbs.db
+
+# Docs and launcher scripts — not needed inside the container
+Handoff.md
+PLAN.md
+README.md
+*.command
+*.bat
+*.sh
+
+# IDE / tooling noise
+.vscode
+.idea
+*.swp

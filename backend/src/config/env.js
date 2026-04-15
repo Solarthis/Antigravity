@@ -1,39 +1,18 @@
 // =============================================================================
 // PROJECT ANTIGRAVITY — Environment Configuration
 // =============================================================================
-// Loads and validates environment variables. Fails fast on missing required vars.
+// Loads and validates environment variables. Portable defaults for zero-config.
 
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 
-/**
- * Validates that all required environment variables are present.
- * Throws immediately on missing required vars — fail fast.
- */
-function validateEnv(requiredVars) {
-  const missing = requiredVars.filter((v) => !process.env[v]);
-  if (missing.length > 0) {
-    throw new Error(
-      `[FATAL] Missing required environment variables: ${missing.join(', ')}`
-    );
-  }
-}
-
-// Only DB vars are truly required at startup. Twilio vars are checked at send time.
-validateEnv(['DB_HOST', 'DB_PORT', 'DB_NAME', 'DB_USER']);
+// Repo-root `./data` is the only supported persistence target. No override.
+const dataDir = path.resolve(__dirname, '../../../data');
 
 const env = {
-  // --- Database ---
-  db: {
-    host: process.env.DB_HOST,
-    port: parseInt(process.env.DB_PORT, 10),
-    database: process.env.DB_NAME,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD || '',
-    max: parseInt(process.env.DB_MAX_POOL || '10', 10),
-    idleTimeoutMillis: parseInt(process.env.DB_IDLE_TIMEOUT_MS || '30000', 10),
-    connectionTimeoutMillis: parseInt(process.env.DB_CONNECTION_TIMEOUT_MS || '5000', 10),
-  },
+  // --- Data & Persistence ---
+  dataDir,
+  dbPath: path.join(dataDir, 'antigravity.db'),
 
   // --- Twilio ---
   twilio: {

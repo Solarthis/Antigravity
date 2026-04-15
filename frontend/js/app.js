@@ -1,7 +1,7 @@
 // =============================================================================
 // PROJECT ANTIGRAVITY — Dashboard Application
 // =============================================================================
-// Vanilla JS SPA. Fetches from /api/v1. Auto-refreshes every 30s.
+// Vanilla JS SPA. Fetches from /api/v1. Live-updates via SSE.
 // Reflects database truth only. Distinguishes success/blocked/failed/partial.
 
 (function () {
@@ -224,7 +224,16 @@
     `).join('');
   }
 
-  // loadHunts no longer calls API — handled by SSE
+  // Immediate post-mutation refresh path used after create/toggle so the UI
+  // reflects DB truth without waiting for the next SSE tick.
+  async function loadHunts() {
+    try {
+      const { data } = await api('/hunts');
+      renderHunts(data);
+    } catch (err) {
+      console.error('[hunts] refresh failed:', err.message);
+    }
+  }
 
   function renderHunts(hunts) {
     const container = document.getElementById('hunts-list');
@@ -397,7 +406,9 @@
       showToast('Hunt created successfully', 'success');
       closeModal();
       form.reset();
-      // SSE automatically refreshes data next tick or we can force load status
+      // Immediate refresh so the new hunt appears without waiting for the
+      // next SSE tick.
+      loadHunts();
     } catch (err) {
       showToast(`Failed to create hunt: ${err.message}`, 'error');
     }

@@ -5,7 +5,10 @@
 // No zombie processes. No memory leaks.
 
 const { chromium } = require('playwright-extra');
-const stealth = require('playwright-extra-plugin-stealth');
+// FIX: playwright-extra-plugin-stealth@0.0.1 is a broken stub that throws on require().
+// The correct stealth plugin is puppeteer-extra-plugin-stealth, which is fully
+// compatible with playwright-extra.
+const stealth = require('puppeteer-extra-plugin-stealth');
 const env = require('../config/env');
 const { USER_AGENTS, VIEWPORTS } = require('../config/constants');
 
